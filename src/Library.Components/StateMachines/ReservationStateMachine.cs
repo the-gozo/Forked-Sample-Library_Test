@@ -22,7 +22,14 @@ namespace Library.Components.StateMachines
 
             Event(() => BookCheckedOut, x => x.CorrelateBy((instance, context) => instance.BookId == context.Message.BookId));
 
-            Schedule(() => ExpirationSchedule, x => x.ExpirationTokenId, x => x.Delay = TimeSpan.FromHours(24));
+            Schedule(() => ExpirationSchedule, 
+                x => x.ExpirationTokenId,
+                x => 
+                { 
+                    x.Delay = TimeSpan.FromHours(24);
+                    x.Received = r => r.CorrelateById(ctx => ctx.Message.ReservationId); 
+                }
+            );
 
             Initially(
                 When(ReservationRequested)
@@ -44,7 +51,7 @@ namespace Library.Components.StateMachines
                     .Schedule(ExpirationSchedule, context => context.Init<ReservationExpired>(new { context.Message.ReservationId }),
                         context => context.Message.Duration ?? TimeSpan.FromDays(1))
                     .TransitionTo(Reserved),
-                When(ReservationExpired)
+                When(ExpirationSchedule.Received)
                     .Finalize()
             );
 
@@ -61,7 +68,7 @@ namespace Library.Components.StateMachines
                 When(BookReserved)
                     .Schedule(ExpirationSchedule, context => context.Init<ReservationExpired>(new { context.Message.ReservationId }),
                         context => context.Message.Duration ?? TimeSpan.FromDays(1)),
-                When(ReservationExpired)
+                When(ExpirationSchedule.Received)
                     .PublishReservationCancelled()
                     .Finalize(),
                 When(ReservationCancellationRequested)
@@ -86,7 +93,6 @@ namespace Library.Components.StateMachines
         public Event<BookCheckedOut> BookCheckedOut { get; }
         public Event<ReservationRequested> ReservationRequested { get; }
         public Event<ReservationCancellationRequested> ReservationCancellationRequested { get; }
-        public Event<ReservationExpired> ReservationExpired { get; }
     }
 
 
